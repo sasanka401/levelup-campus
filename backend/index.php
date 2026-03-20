@@ -1,4 +1,8 @@
 <?php
+// ─── Error Display (remove after fixing) ──────────────────────
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 /**
  * ─── API Entry Point ──────────────────────────────────────────
  * All requests go through index.php via .htaccess rewrite.
@@ -8,7 +12,7 @@
 // ─── CORS Headers ─────────────────────────────────────────────
 require_once __DIR__ . '/config/env.example.php';
 
-header('Access-Control-Allow-Origin: ' . CLIENT_URL);
+header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json; charset=utf-8');
@@ -34,15 +38,15 @@ require_once __DIR__ . '/controllers/OtherControllers.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $path   = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-// Strip /api prefix
-$path = preg_replace('#^/gamified-api/api#', '', $path);
+// Strip any known prefix — works on XAMPP and InfinityFree
+$path = preg_replace('#^(/gamified-api)?/api#', '', $path);
 $path = rtrim($path, '/');
+if ($path === '') $path = '/';
 $segments = array_values(array_filter(explode('/', $path)));
 
 // ─── Route table ──────────────────────────────────────────────
-// Format: METHOD /resource/...
 
-// ── Health check ─────────────────────────────────────────────
+// ── Health check ──────────────────────────────────────────────
 if ($method === 'GET' && $path === '/health') {
     Response::success('Gamified Platform PHP API is running 🚀', [
         'environment' => APP_ENV,
@@ -58,7 +62,7 @@ if ($method === 'GET'  && $path === '/auth/me')          AuthController::me();
 // ── Progress routes ───────────────────────────────────────────
 if ($method === 'GET'  && $path === '/progress/dashboard') ProgressController::getDashboard();
 
-if ($method === 'GET'  && isset($segments[1], $segments[2]) && $segments[0] === 'progress' && $segments[2] === 'tasks') {
+if ($method === 'GET' && isset($segments[1], $segments[2]) && $segments[0] === 'progress' && $segments[2] === 'tasks') {
     ProgressController::getLevelTasks((int)$segments[1]);
 }
 
@@ -67,8 +71,8 @@ if ($method === 'POST' && isset($segments[1], $segments[2]) && $segments[0] === 
 }
 
 // ── User routes ───────────────────────────────────────────────
-if ($method === 'GET'   && $path === '/users/peers')      UserController::getPeers();
-if ($method === 'PATCH' && $path === '/users/profile')    UserController::updateProfile();
+if ($method === 'GET'   && $path === '/users/peers')           UserController::getPeers();
+if ($method === 'PATCH' && $path === '/users/profile')         UserController::updateProfile();
 if ($method === 'POST'  && $path === '/users/change-password') UserController::changePassword();
 
 if ($method === 'GET' && isset($segments[0], $segments[1]) && $segments[0] === 'users' && is_numeric($segments[1])) {
@@ -90,35 +94,30 @@ if ($method === 'PATCH' && isset($segments[0], $segments[1], $segments[2]) && $s
 }
 
 // ── Admin routes ──────────────────────────────────────────────
-if ($method === 'GET'   && $path === '/admin/stats')   AdminController::getStats();
-if ($method === 'GET'   && $path === '/admin/users')   AdminController::getAllUsers();
-if ($method === 'POST'  && $path === '/admin/levels')  AdminController::upsertLevel();
-if ($method === 'POST'  && $path === '/admin/tasks')   AdminController::createTask();
+if ($method === 'GET'  && $path === '/admin/stats')  AdminController::getStats();
+if ($method === 'GET'  && $path === '/admin/users')  AdminController::getAllUsers();
+if ($method === 'POST' && $path === '/admin/levels') AdminController::upsertLevel();
+if ($method === 'POST' && $path === '/admin/tasks')  AdminController::createTask();
 
-if ($method === 'PATCH' && isset($segments[0], $segments[1], $segments[2]) && $segments[0] === 'admin' && $segments[1] === 'users' && $segments[2] === 'toggle') {
-    // /admin/users/:id/toggle
-    AdminController::toggleUserStatus((int)$segments[1]); // handled with 4-segment check below
-}
-
-// /admin/users/:id/toggle  →  segments: ['admin','users','ID','toggle']
-if ($method === 'PATCH' && isset($segments[3]) && $segments[0]==='admin' && $segments[1]==='users' && $segments[3]==='toggle') {
+// /admin/users/:id/toggle
+if ($method === 'PATCH' && isset($segments[3]) && $segments[0] === 'admin' && $segments[1] === 'users' && $segments[3] === 'toggle') {
     AdminController::toggleUserStatus((int)$segments[2]);
 }
 
-// /admin/users/:id/xp  →  segments: ['admin','users','ID','xp']
-if ($method === 'POST' && isset($segments[3]) && $segments[0]==='admin' && $segments[1]==='users' && $segments[3]==='xp') {
+// /admin/users/:id/xp
+if ($method === 'POST' && isset($segments[3]) && $segments[0] === 'admin' && $segments[1] === 'users' && $segments[3] === 'xp') {
     AdminController::adjustXP((int)$segments[2]);
 }
 
-// /admin/tasks/:id  →  segments: ['admin','tasks','ID']
-if ($method === 'PATCH' && isset($segments[2]) && $segments[0]==='admin' && $segments[1]==='tasks') {
+// /admin/tasks/:id
+if ($method === 'PATCH' && isset($segments[2]) && $segments[0] === 'admin' && $segments[1] === 'tasks') {
     AdminController::updateTask((int)$segments[2]);
 }
 
-// ── Badges (public list) ──────────────────────────────────────
+// ── Badges ────────────────────────────────────────────────────
 if ($method === 'GET' && $path === '/badges') {
     AuthMiddleware::protect();
-    $db    = Database::getInstance()->getConnection();
+    $db     = Database::getInstance()->getConnection();
     $badges = $db->query("SELECT * FROM badges WHERE is_active = 1 ORDER BY rarity, name")->fetchAll();
     Response::success('OK', ['badges' => $badges]);
 }
